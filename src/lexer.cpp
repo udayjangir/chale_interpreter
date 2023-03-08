@@ -1,51 +1,130 @@
 #include <iostream>
-#include "lexer.h"
+#include <unordered_map>
+#include <deque>
 #include <stdio.h>
+#include "lexer.h"
+
+// define some expressions
+#define IS_DIGIT(x) (0 <= x-'0' && x-'0' <= 9)
+#define IS_LETTER(x) ((0 <= x-'a' && x-'a' < 26) || (0 <= x-'A' && x-'A' < 26))
+#define IS_UNDERSCORE(x) (x=='_')
 
 using namespace std;
 
-// declare a global variable to store tokens
-vector<pair<string,string>> tokens;
+// declare global variables to store tokens, and symbol table
+deque<pair<string,string>> tokens;
+unordered_map<string,pair<string,int>> sym_table;
 
 // identify the tokens from input (lexical analysis)
-void getTokens(string input) {
+bool getTokens(string input) {
     
     string token = "";
+    bool isTokenInt = false;
     for (int i=0; i<input.size(); i++){
+        char currChar = input[i];
 
         // ignore white spaces and tabs
-        if (input[i] == ' ' || input[i] == '\t'){
+        if (currChar == ' ' || currChar == '\t' || currChar == '\n'){
             if (token.size() != 0){
-                tokens.push_back(make_pair("int", token));
+                if (isTokenInt) tokens.push_back(make_pair(INT, token));
+                else {
+                    if (token == INT) tokens.push_back(make_pair(TYPE, INT));
+                    else if (token == COUT) tokens.push_back(make_pair(KEY, COUT));
+                    else tokens.push_back(make_pair(ID, token));
+                }
                 token = "";
             }
             else continue;
         }
 
-        // save the <int> and <opr> tokens when '+' is encountered
-        else if (input[i] == '+'){
+        // add the token when any punctuation is encountered
+        else if (currChar == '+' || currChar == ';' || currChar == ',' || currChar == '=' || currChar == '(' || currChar == ')' || currChar == '<'){
             if (token.size() != 0){
-                tokens.push_back(make_pair("int", token));
-                tokens.push_back(make_pair("opr", "+"));
+                if (isTokenInt) tokens.push_back(make_pair(INT, token));
+                else {
+                    if (token == INT) tokens.push_back(make_pair(TYPE, INT));
+                    else if (token == COUT) tokens.push_back(make_pair(KEY, COUT));
+                    else tokens.push_back(make_pair(ID, token));
+                }
                 token = "";
             }
-            else tokens.push_back(make_pair("opr", "+"));
+            switch (currChar){
+                case '=':
+                    tokens.push_back(make_pair(OPR, ASSIGN));
+                    break;
+                case '+':
+                    tokens.push_back(make_pair(OPR, PLUS));
+                    break;
+                case ';':
+                    tokens.push_back(make_pair(PUNC, SCOLON));
+                    break;
+                case ',':
+                    tokens.push_back(make_pair(PUNC, COMMA));
+                    break;
+                case '(':
+                    tokens.push_back(make_pair(PUNC, LPAREN));
+                    break;
+                case ')':
+                    tokens.push_back(make_pair(PUNC, RPAREN));
+                    break;
+                case '<':
+                    if (input[i+1] == '<'){
+                        tokens.push_back(make_pair(OPR, DLT));
+                        i++;
+                    }
+                    else {
+                        cout << "\033[31mError: Type(Lexical error): Expected '<<' but found only '<'\033[0m" << endl;
+                        tokens.clear();
+                        return false;
+                    }
+                    break;
+            }
         }
 
         else {
-            if (0 <= input[i] - '0' && input[i] - '0' < 9) token += input[i];
+            // mark the type of token (int or id)
+            if (token.size() == 0 && (IS_DIGIT(currChar) || IS_LETTER(currChar) || IS_UNDERSCORE(currChar))){
+                if (IS_DIGIT(currChar)) isTokenInt = true;
+                else if (IS_LETTER(currChar) || IS_UNDERSCORE(currChar)) isTokenInt = false;
 
-            // throw error if any character other than '+' or [0-9] found
-            else {
-                cout << "\033[31mError: Type(Lexical error): Unidentified character found at index = " << i << "\033[0m" <<  endl;
-                exit(1);
+                token += currChar;
+            }
+
+            // if identifier starts with a number, throw error
+            else if (isTokenInt && (IS_LETTER(currChar) || IS_UNDERSCORE(currChar))){
+                cout << "\033[31mError: Type(Lexical error): Unexpected identifier name found " << "'" + token + currChar + "'" << "\033[0m" <<  endl;
+                tokens.clear();
+                return false;
+            }
+
+            // else keep adding characters to token
+            else if (IS_DIGIT(currChar) || IS_LETTER(currChar) || IS_UNDERSCORE(currChar)){
+                token += currChar;
+            }
+
+            // throw error if any other unexpected character found
+            else if (currChar != '_'){
+                cout << "\033[31mError: Type(Lexical error): Unidentified character '" <<  currChar <<  "' found at index = " << i << "\033[0m" <<  endl;
+                tokens.clear();
+                return false;
             }
         }
     }
 
-    // put the last remaining <int> (if any) in the tokens
-    if (token.size() != 0) tokens.push_back(make_pair("int", token));
-    return;
+    // put the last remaining token (if any) in the tokens
+    if (token.size() != 0){
+
+        if (isTokenInt) tokens.push_back(make_pair(INT, token));
+        else {
+            if (token == INT) tokens.push_back(make_pair(TYPE, INT));
+            else if (token == COUT) tokens.push_back(make_pair(KEY, COUT));
+            else tokens.push_back(make_pair(ID, token));
+        }
+
+        token = "";
+    }
+
+    return true;
 }
 
 // shows the output of lexer i.e. tokens info
@@ -53,20 +132,24 @@ void showOutput(){
     cout << "\n---------------------------------------------\n" << endl;
     cout << "OUTPUT OF LEXER:\n\n" << "Token count: " << tokens.size() << endl;
 
-    cout << "\nList of tokens:" << endl;
-    for (int i=0; i<tokens.size(); i++){
-        cout << tokens[i].first << " " << tokens[i].second << endl;
+    cout << "\nList of tokens:\n" << endl;
+    for (auto token: tokens){
+        cout << token.first << "\t" << token.second << endl;
     }
     cout << "\n---------------------------------------------\n" << endl;
 }
 
 // function to take input characters and process on them
-void lex(){
+bool lex(){
 
-    cout << "\nEnter an expression: ";
+    // cout << "\nEnter an expression: ";
     string input;
     getline(cin, input);
 
-    getTokens(input);
-    showOutput();
+    return getTokens(input);
+    // showOutput();
 }
+
+// int main(){
+//     lex();
+// }
