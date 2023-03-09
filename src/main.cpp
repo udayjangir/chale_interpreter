@@ -9,11 +9,11 @@ using namespace std;
 extern deque<pair<string,string>> tokens;
 extern unordered_map<string /*id*/ ,pair<string,int> /*(type,value)*/> sym_table;
 pair<string,string> curr_token;
-bool runningState;
+bool running_state;
 
-// fucntion to show errors
+// function to show errors
 void error(int code) {
-    if (!runningState) return;
+    if (!running_state) return;
 
     switch (code) {
 
@@ -26,15 +26,22 @@ void error(int code) {
         case 12:
             cout << "\033[31mError: Type(Syntax error): Invalid statement line\033[0m" << endl;
             break;
+        
+        // if empty expression found
+        case 13:
+            cout << "\033[31mError: Type(Syntax error): Invalid expression found\033[0m" << endl;
+            break;
     }
-    runningState = false;
+
+    // perform a reset
+    running_state = false;
     curr_token = make_pair(KEY,NONE);
     tokens.clear();
     return;
 }
 
 void error(int code, string extra_info){
-    if (!runningState) return;
+    if (!running_state) return;
 
     switch (code){
 
@@ -66,7 +73,7 @@ void error(int code, string extra_info){
             break;
     }
 
-    runningState = false;
+    running_state = false;
     curr_token = make_pair(KEY,NONE);
     tokens.clear();
     return;
@@ -87,7 +94,7 @@ pair<string,string> getToken(){
 
 // function to match for the terminal
 void match(string token){
-    if (!runningState) return;
+    if (!running_state) return;
 
     curr_token = getToken();
     if (curr_token.second == token) return;
@@ -96,13 +103,13 @@ void match(string token){
 
 // to check if an ID is in symbol table
 bool checkID(string id){
-    if (runningState && sym_table.find(id) != sym_table.end()) return true;
+    if (running_state && sym_table.find(id) != sym_table.end()) return true;
     else return false;
 }
 
 // matches ID in the grammar rule and handles errors {11,22}
 string matchID(){
-    if (!runningState) return "";
+    if (!running_state) return "";
 
     curr_token = getToken();
     if (curr_token.first == ID) {
@@ -120,67 +127,68 @@ string matchID(){
     else error(11); return "";
 }
 
+// match rule expr -> id | int
 int expression(){
-    // to avoid evaluating expression if we have an error already
-    if (!runningState) return INT_MIN;
-
-    int result = 0;
-    curr_token = getToken();
     
     // match for expr -> ID rule
     if (curr_token.first == ID) {
         string id_name = curr_token.second;
+
         if (checkID(id_name)){
 
             // if variable is declared but not initialised
             if (sym_table[id_name].second == INT_MIN) error(25, id_name);
 
-            // else add the value of id to result
-            result += sym_table[id_name].second;
-
-            // evaluate remaining expression
-            int temp = expression();
-            if (temp == INT_MIN) return INT_MIN;
-            else return result + temp;
+            else return sym_table[id_name].second;
         }
 
         // if no such name exists in symbol table
-        else error(23,id_name); return INT_MIN;
+        else error(23,id_name);
+        return INT_MIN;
     }
 
     // match for expr -> INT rule
-    else if (curr_token.first == INT) {
-        result += stoi(curr_token.second);
-        int temp = expression();
-        if (temp == INT_MIN) return INT_MIN;
-        else return result + temp;
-    }
+    else if (curr_token.first == INT) return stoi(curr_token.second);
 
-    // match for expr -> "+" expr rule
-    else if (curr_token.second == PLUS) {
-        int temp = expression();
-        if (temp == INT_MIN) return INT_MIN;
-        else return result + temp;
-    }
-
-    // otherwise
+    // if valid expression not found (i.e. expr -> int | id not matched)
     else {
         tokens.push_front(curr_token);
-        return result;
+        error(13);
+        return INT_MIN;
     }
 
 }
 
+// expression sequence, performs addition
+int exprSeq(){
+    if (!running_state) return INT_MIN;
+
+    curr_token = getToken();
+    int result = 0;
+    result += expression();
+    if (result == INT_MIN) return INT_MIN;
+
+    pair<string,string> next_token = getToken();
+    tokens.push_front(next_token);
+
+    // check if sequence ended with ';' else match for '+' instead
+    if (next_token.second == SCOLON) return result;
+    else {
+        match(PLUS);
+        return result + exprSeq();
+    }
+}
+
 // update the symbol table
 void updateSymTable(string id, string type, int value){
-    if (!runningState) return;
+    if (!running_state) return;
     sym_table[id] = make_pair(type,value);
     return;
 }
 
 // matches declaration rule (assignment -> declaration)
 bool declaration(string id_name){
-    if (runningState && curr_token.second == SCOLON){
+    if (running_state && curr_token.second == SCOLON){
         updateSymTable(id_name,INT,INT_MIN);
         return true;
     }
@@ -189,8 +197,8 @@ bool declaration(string id_name){
 
 // matches initialisation rule (assignment -> initialisation)
 bool initialisation(string id_name){
-    if (runningState && curr_token.second == ASSIGN){
-        int id_value = expression();
+    if (running_state && curr_token.second == ASSIGN){
+        int id_value = exprSeq();
         match(SCOLON);
         updateSymTable(id_name,INT,id_value);
         return true;
@@ -200,7 +208,7 @@ bool initialisation(string id_name){
 
 // to handle assignment -> declaration | initialisation | reassign
 bool assignment(){
-    if (!runningState) return false;
+    if (!running_state) return false;
 
     // if 'int' keyword found, we should declare or initialise new variable
     if (curr_token.second == INT){
@@ -223,7 +231,7 @@ bool assignment(){
         string id_name = curr_token.second;
         if (checkID(id_name)) {
             match(ASSIGN);
-            int id_value = expression();
+            int id_value = exprSeq();
             if (id_value == INT_MIN) return false;
             match(SCOLON);
             updateSymTable(id_name,INT,id_value);
@@ -238,14 +246,14 @@ bool assignment(){
 
 // prints using 'cout' keyword
 bool print(){
-    if (runningState && curr_token.second == COUT){
+    if (running_state && curr_token.second == COUT){
         match(DLT);
-        int value = expression();
+        int value = exprSeq();
         if (value == INT_MIN) return false;
         match(SCOLON);
 
         // prints only if we have not encountered any error
-        if (runningState) cout << value << endl;
+        if (running_state) cout << value << endl;
         return true;
     }
     else return false;
@@ -253,9 +261,9 @@ bool print(){
 
 // exit the interpreter using 'exit' keyword
 bool exitProgram(){
-    if (runningState && curr_token.second == EXIT) {
+    if (running_state && curr_token.second == EXIT) {
         match(SCOLON);
-        if (runningState) exit(0);
+        if (running_state) exit(0);
         else return false;
     }
     else return false;
@@ -263,7 +271,7 @@ bool exitProgram(){
 
 // execute a line and check for rule line -> exit | print | assignment
 bool line(){
-    runningState = true;
+    running_state = true;
     curr_token = getToken();
     if (exitProgram() || print() || assignment()) return true;
     else return false;
