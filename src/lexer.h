@@ -17,6 +17,7 @@
 
 // define macros for symbols
 #define PLUS "+"
+#define MINUS "-"
 #define ASSIGN "="
 #define SCOLON ";"
 #define COMMA ","

@@ -38,7 +38,7 @@ bool getTokens(string input) {
         }
 
         // add the token when any punctuation is encountered
-        else if (currChar == '+' || currChar == ';' || currChar == ',' || currChar == '=' || currChar == '(' || currChar == ')' || currChar == '<'){
+        else if (currChar == '+' || currChar == ';' || currChar == ',' || currChar == '=' || currChar == '(' || currChar == ')' || currChar == '<' || currChar == '-'){
             if (token.size() != 0){
                 if (isTokenInt) tokens.push_back(make_pair(INT, token));
                 else {
@@ -67,8 +67,10 @@ bool getTokens(string input) {
                 case ')':
                     tokens.push_back(make_pair(PUNC, RPAREN));
                     break;
+                
+                // check '<<' token to print the output with 'cout'
                 case '<':
-                    if (input[i+1] == '<'){
+                    if (i+1 < input.size() && input[i+1] == '<'){
                         tokens.push_back(make_pair(OPR, DLT));
                         i++;
                     }
@@ -78,10 +80,24 @@ bool getTokens(string input) {
                         return false;
                     }
                     break;
+                
+                // if negative integer is found
+                // must be without space, because then lexer treats '-' as separate token and gives error
+                case '-':
+                    if (i+1 < input.size() && IS_DIGIT(input[i+1])){
+                        isTokenInt = true;
+                        token = "-";
+                    }
+                    else {
+                        cout << "\033[31mError: Type(Lexical error): Expected negative integer but found only  '-'\033[0m" << endl;
+                        tokens.clear();
+                        return false;
+                    }
             }
         }
 
         else {
+
             // mark the type of token (int or id)
             if (token.size() == 0 && (IS_DIGIT(currChar) || IS_LETTER(currChar) || IS_UNDERSCORE(currChar))){
                 if (IS_DIGIT(currChar)) isTokenInt = true;

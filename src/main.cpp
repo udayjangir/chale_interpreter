@@ -172,7 +172,7 @@ int exprSeq(){
     tokens.push_front(next_token);
 
     // check if sequence ended with ';' else match for '+' instead
-    if (next_token.second == SCOLON) return result;
+    if (next_token.second == SCOLON || next_token.second == COMMA) return result;
     else {
         match(PLUS);
         return result + exprSeq();
@@ -186,11 +186,23 @@ void updateSymTable(string id, string type, int value){
     return;
 }
 
+bool declaration(string id_name);
+bool initialisation(string id_name);
+
 // matches declaration rule (assignment -> declaration)
 bool declaration(string id_name){
+    updateSymTable(id_name,INT,INT_MIN);
+
+    // if ';' found, declaration ends
     if (running_state && curr_token.second == SCOLON){
-        updateSymTable(id_name,INT,INT_MIN);
         return true;
+    }
+    
+    // if multiple declarations using comma, process them
+    else if (running_state && curr_token.second == COMMA){
+        string other_id = matchID();
+        curr_token = getToken();
+        return initialisation(other_id) || declaration(other_id);
     }
     else return false;
 }
@@ -199,8 +211,18 @@ bool declaration(string id_name){
 bool initialisation(string id_name){
     if (running_state && curr_token.second == ASSIGN){
         int id_value = exprSeq();
-        match(SCOLON);
         updateSymTable(id_name,INT,id_value);
+
+        // handle multiple initialisations by checking comma
+        curr_token = getToken();
+        if (curr_token.second == COMMA){
+            string other_id = matchID();
+            curr_token = getToken();
+            return initialisation(other_id) || declaration(other_id);
+        }
+        else tokens.push_front(curr_token);
+        
+        match(SCOLON);
         return true;
     }
     else return false;
