@@ -130,6 +130,7 @@ string matchID(){
 
 // match rule expr -> id | int
 int expression(){
+    if (!running_state) return INT_MIN;
     
     // match for expr -> ID rule
     if (curr_token.first == ID) {
@@ -176,7 +177,9 @@ int exprSeq(){
     if (next_token.second == SCOLON || next_token.second == COMMA) return result;
     else if (next_token.second == PLUS){
         match(PLUS);
-        return result + exprSeq();
+        int remaining_expr = exprSeq();
+        if (remaining_expr == INT_MIN) return INT_MIN;
+        return result + remaining_expr;
     }
     else return INT_MIN;
 }
@@ -223,6 +226,7 @@ bool declaration(vector<pair<string,int>> &ids){
 bool initialisation(vector<pair<string,int>> &ids){
     if (running_state && curr_token.second == ASSIGN){
         int id_value = exprSeq();
+        if (id_value == INT_MIN) return false;
 
         // add the id with its initialisation value to list of ids
         pair<string,int> id = ids.back();
