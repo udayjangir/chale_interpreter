@@ -2,6 +2,7 @@
 #include <deque>
 #include <unordered_map>
 #include <limits.h>
+#include <vector>
 #include "lexer.h"
 using namespace std;
 
@@ -30,6 +31,11 @@ void error(int code) {
         // if empty expression found
         case 13:
             cout << "\033[31mError: Type(Syntax error): Invalid expression found\033[0m" << endl;
+            break;
+        
+        // variable declaration error
+        case 14:
+            cout << "\033[31mError: Type(Syntax error): Variable is not declared properly\033[0m" << endl;
             break;
     }
 
@@ -61,14 +67,9 @@ void error(int code, string extra_info){
         case 23:
             cout << "\033[31mError: Type(Syntax error): Name '" << extra_info << "' is not defined\033[0m" << endl;
             break;
-
-        // variable declaration error
-        case 24:
-            cout << "\033[31mError: Type(Syntax error): Variable '" << extra_info << "' is not declared properly\033[0m" << endl;
-            break;
         
         // if variable used without initialisation
-        case 25:
+        case 24:
             cout << "\033[31mError: Type(Syntax error): Variable '" << extra_info << "' is not initialised\033[0m" << endl;
             break;
     }
@@ -137,7 +138,7 @@ int expression(){
         if (checkID(id_name)){
 
             // if variable is declared but not initialised
-            if (sym_table[id_name].second == INT_MIN) error(25, id_name);
+            if (sym_table[id_name].second == INT_MIN) error(24, id_name);
 
             else return sym_table[id_name].second;
         }
@@ -173,10 +174,11 @@ int exprSeq(){
 
     // check if sequence ended with ';' else match for '+' instead
     if (next_token.second == SCOLON || next_token.second == COMMA) return result;
-    else {
+    else if (next_token.second == PLUS){
         match(PLUS);
         return result + exprSeq();
     }
+    else return INT_MIN;
 }
 
 // update the symbol table
@@ -186,43 +188,68 @@ void updateSymTable(string id, string type, int value){
     return;
 }
 
-bool declaration(string id_name);
-bool initialisation(string id_name);
+bool declaration(vector<pair<string,int>> &ids);
+bool initialisation(vector<pair<string,int>> &ids);
 
 // matches declaration rule (assignment -> declaration)
-bool declaration(string id_name){
-    updateSymTable(id_name,INT,INT_MIN);
+bool declaration(vector<pair<string,int>> &ids){
 
     // if ';' found, declaration ends
     if (running_state && curr_token.second == SCOLON){
+        while (!ids.empty()){
+
+            // update symbol table for all the ids
+            pair<string,int> id = ids.back();
+            ids.pop_back();
+            updateSymTable(id.first,INT,id.second);
+        }
         return true;
     }
     
     // if multiple declarations using comma, process them
     else if (running_state && curr_token.second == COMMA){
+
+        // add the declared id the the list of ids
         string other_id = matchID();
+        ids.push_back(make_pair(other_id,INT_MIN));
+
         curr_token = getToken();
-        return initialisation(other_id) || declaration(other_id);
+        return initialisation(ids) || declaration(ids);
     }
     else return false;
 }
 
 // matches initialisation rule (assignment -> initialisation)
-bool initialisation(string id_name){
+bool initialisation(vector<pair<string,int>> &ids){
     if (running_state && curr_token.second == ASSIGN){
         int id_value = exprSeq();
-        updateSymTable(id_name,INT,id_value);
+
+        // add the id with its initialisation value to list of ids
+        pair<string,int> id = ids.back();
+        ids.pop_back();
+        id.second = id_value;
+        ids.push_back(id);
 
         // handle multiple initialisations by checking comma
         curr_token = getToken();
         if (curr_token.second == COMMA){
+
+            // update ids list with new id
             string other_id = matchID();
+            ids.push_back(make_pair(other_id,INT_MIN));
             curr_token = getToken();
-            return initialisation(other_id) || declaration(other_id);
+
+            return initialisation(ids) || declaration(ids);
         }
         else tokens.push_front(curr_token);
         
+        // if semicolon found, then assign values to all ids in list
         match(SCOLON);
+        while (!ids.empty()){
+            pair<string,int> id = ids.back();
+            ids.pop_back();
+            updateSymTable(id.first,INT,id.second);
+        }
         return true;
     }
     else return false;
@@ -237,13 +264,15 @@ bool assignment(){
 
         // match ID tokens and handle errors
         string id_name = matchID();
+        vector<pair<string,int>> ids ;
+        ids.push_back(make_pair(id_name,INT_MIN));
 
         curr_token = getToken();
-        if (declaration(id_name) || initialisation(id_name)) return true;
+        if (declaration(ids) || initialisation(ids)) return true;
 
-        // if not a proper assignment syntax
+        // if not a proper assignment syntax show error
         else{
-            error(24, id_name);
+            error(14);
             return false;
         }
     }
@@ -271,8 +300,8 @@ bool print(){
     if (running_state && curr_token.second == COUT){
         match(DLT);
         int value = exprSeq();
-        if (value == INT_MIN) return false;
         match(SCOLON);
+        if (value == INT_MIN) return false;
 
         // prints only if we have not encountered any error
         if (running_state) cout << value << endl;
@@ -301,6 +330,7 @@ bool line(){
 
 // main function
 int main(){
+    cout << "\nChale Interpreter 1.0.1\nType 'exit;' to terminate the program\n" << endl;
 
     // continuosly take input statement lines
     while (true){
